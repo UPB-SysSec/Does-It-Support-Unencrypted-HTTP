@@ -204,7 +204,6 @@ class Analyzer:
 
         # receive response
         finished_receiving = False
-        response_headers = None
         response_received = False
         event_list = []
 
@@ -228,7 +227,26 @@ class Analyzer:
                 if isinstance(event, h2.events.ResponseReceived):
                     self._debug("Received HTTP/2 response from " + self.ip + ":" + str(self.port) + "(" + self.hostname + "). Response headers: " + str(event.headers))
                     response_headers = event.headers
-                    # TODO: already analyze HTTP/2 headers here for success/failure
+                    # analyze all received headers for success, redirect or other
+                    for header in response_headers:
+                        key, value = header
+                        if key == b":status":
+                            try:
+                                status_code = int(value)
+                            except Exception as e:
+                                self._debug("Could not extract status code from HTTP/2 response headers: " + str(response_headers) + " with exception: " + str(e))
+                                return FAILURE
+                            if status_code == 200:
+                                return SUCCESS
+                            elif status_code == 301 or status_code == 302:
+                                # redirect
+                                redirect = self.update_redirect(dict(response_headers))
+                                if redirect != SUCCESS:
+                                    return redirect
+                                return REDIRECT + "(" + self.hostname + self.path + ") -> " + self.analyze_http2_prior_knowledge(recursion - 1)
+                            else:
+                                self._debug("Received status code " + str(status_code) + " leading to failure.")
+                                return FAILURE
                     response_received = True
                     self._debug("Received HTTP/2 response from " + self.ip + ":" + str(self.port) + "(" + self.hostname + ")")
                 elif isinstance(event, h2.events.StreamEnded):
@@ -238,23 +256,10 @@ class Analyzer:
             sock.send(h2_connection.data_to_send())
         if not response_received:
             self._debug("No response received from " + self.ip + ":" + str(self.port) + "(" + self.hostname + ")")
-            return FAILURE
-        try:
-            status_code = int(response_headers[0][1])
-        except Exception as e:
-            self._debug("Could not extract status code from HTTP/2 response headers: " + str(response_headers) + " with exception: " + str(e))
-            return FAILURE
-        if status_code == 200:
-            return SUCCESS
-        elif status_code == 301 or status_code == 302:
-            # redirect
-            redirect = self.update_redirect(response_headers)
-            if redirect != SUCCESS:
-                return redirect
-            return REDIRECT + "(" + self.hostname + self.path + ") -> " + self.analyze_http2_prior_knowledge(recursion - 1)
         else:
-            self._debug("Received status code " + str(status_code) + " leading to failure.")
-            return FAILURE
+            self._debug("Received response but no status header from " + self.ip + ":" + str(self.port) + "(" + self.hostname + ")")
+        return FAILURE
+
 
     def analyze_http2_upgrade(self) -> str:
         pass
