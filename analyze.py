@@ -67,36 +67,46 @@ class Analyzer:
             print("Server online. Scanning!")
 
         try:
+            print("## Starting HTTP/0.9 analysis ##")
             ret_09 = self.analyze_http09()
         except Exception as e:
             self._debug("Error while analyzing HTTP/0.9: " + str(e))
             traceback.print_exc()
             ret_09 = FAILURE
         try:
+            print("## Starting HTTP/1.0 analysis ##")
             ret_10 = self.analyze_http10(self.redirect_depth)
         except Exception as e:
             self._debug("Error while analyzing HTTP/1.0: " + str(e))
             traceback.print_exc()
             ret_10 = FAILURE
         try:
+            print("## Starting HTTP/1.1 analysis ##")
             ret_11 = self.analyze_http11(self.redirect_depth)
         except Exception as e:
             self._debug("Error while analyzing HTTP/1.0: " + str(e))
             traceback.print_exc()
             ret_11 = FAILURE
         try:
-            ret_20 = self.analyze_http2_prior_knowledge(self.redirect_depth)
+            print("## Starting HTTP/2.0 analysis ##")
+            ret_20_prior = self.analyze_http2_prior_knowledge(self.redirect_depth)
         except Exception as e:
             self._debug("Error while analyzing HTTP/2 prior knowledge: " + str(e))
             traceback.print_exc()
-            ret_20 = FAILURE
-        # TODO: analyze_http2_upgrade()
+            ret_20_prior = FAILURE
+        try:
+            print("## Starting HTTP/2.0 upgrade analysis ##")
+            ret_20_upgrade = self.analyze_http2_upgrade(self.redirect_depth)
+        except Exception as e:
+            self._debug("Error while analyzing HTTP/2 upgrade: " + str(e))
+            traceback.print_exc()
+            ret_20_upgrade = FAILURE
         print("\n#####################\n")
         print("HTTP/0.9: " + ret_09)
         print("HTTP/1.0: " + ret_10)
         print("HTTP/1.1: " + ret_11)
-        print("HTTP/2 prior knowledge: " + ret_20)
-        # analyze server for raw http support
+        print("HTTP/2 prior knowledge: " + ret_20_prior)
+        print("HTTP/2 upgrade: " + ret_20_upgrade)
 
     def analyze_http09(self) -> str:
         # open and connect socket
@@ -111,11 +121,10 @@ class Analyzer:
             return FAILURE
         # receive response
         response = self.receive_ascii_response(sock)
-        if response == FAILURE:
-            return FAILURE
+        if response == FAILURE or response == TIMEOUT:
+            return response
         try:
-            if response.lower().startswith("<html>"):
-                # interpret any data as success for HTTP/0.9
+            if response.lower().startswith("<html>") or response.lower().startswith("<!doctype html"):
                 self._debug("HTTP/0.9 response from " + self.ip + ":" + str(self.port) + "(" + self.hostname + ")")
                 return SUCCESS
             else:
@@ -147,14 +156,11 @@ class Analyzer:
             self._debug("Could not send " + version + " request to " + self.ip + ":" + str(self.port) + "(" + self.hostname + ") with exception : " + str(e))
             return FAILURE
         # receive response
-        response = self.receive_ascii_response(sock)
-        if response == FAILURE:
-            return FAILURE
-        try:
-            status, headers, http_version = self.parse_http1_response(response)
-        except Exception as e:
-            self._debug("Failed to parse HTTP/1 response: " + response + " with exception: " + str(e))
-            return FAILURE
+        response = self.receive_http1x_response(sock)
+        if response == FAILURE or response == TIMEOUT:
+            return response
+        else:
+            status, headers, http_version = response
         if status == 200:
             self._debug("Received " + version + " response from " + self.ip + ":" + str(self.port) + "(" + self.hostname + ")")
             return SUCCESS
@@ -170,21 +176,56 @@ class Analyzer:
             return FAILURE
 
     def analyze_http2_prior_knowledge(self, recursion: int) -> str:
+        return self.analyze_http2_core(recursion, True)
+
+
+    def analyze_http2_upgrade(self, recursion: int) -> str:
+        return self.analyze_http2_core(recursion, False)
+
+    def analyze_http2_core(self, recursion: int, prior_knowledge: bool) -> str:
         if recursion == -1:
-            return "Max redirect"
+            return MAX_REDIRECT
+
         # open and connect socket
         sock = self.open_socket()
         if self.connect_socket(sock) != SUCCESS:
             return FAILURE
         # initialize http/2 connection
         h2_connection = h2.connection.H2Connection()
-        h2_connection.initiate_connection()
+
+        # for prior knowledge prepare HTTP/2 initialization packets
+        if prior_knowledge:
+            h2_connection.initiate_connection()
+
+        # for upgrade mechanisms send HTTP/1.1 update packets
+        else:
+            settings_header_value = h2_connection.initiate_upgrade_connection()
+            try:
+                sock.send(self.create_http11_upgrade_request(settings_header_value))
+            except Exception as e:
+                self._debug("Could not send HTTP/1.1 upgrade request to " + self.ip + ":" + str(
+                    self.port) + "(" + self.hostname + ") with exception : " + str(e))
+                return FAILURE
+            # parse upgrade response
+            # TODO: save all data after \r\n\r\n and receive later
+            response = self.receive_http1x_response(sock)
+            if response == FAILURE or response == TIMEOUT:
+                return response
+            else:
+                status, headers, http_version = response
+            if status != 101:
+                self._debug("Received status code " + str(status) + " instead of 101 during HTTP/1.1 upgrade to HTTP/2.")
+                return FAILURE
+
+        # in both cases send HTTP/2 initialization data
         try:
             sock.send(h2_connection.data_to_send())
         except Exception as e:
             self._debug("Could not initialize HTTP/2 connection to " + self.ip + ":" + str(
                 self.port) + "(" + self.hostname + ") with exception : " + str(e))
             return FAILURE
+
+        ##### MAIN LOOP FROM HERE ON #####
 
         # send http/2 request to server
         headers = [
@@ -226,11 +267,15 @@ class Analyzer:
                     break
                 if isinstance(event, h2.events.ResponseReceived):
                     self._debug("Received HTTP/2 response from " + self.ip + ":" + str(self.port) + "(" + self.hostname + "). Response headers: " + str(event.headers))
-                    response_headers = event.headers
+                    # parse response_headers to dict of strings
+                    try:
+                        response_headers = dict([(key.decode("ASCII"), value.decode("ASCII")) for key, value in event.headers])
+                    except Exception as e:
+                        self._debug("Could not decode response headers from HTTP/2 response: " + str(event.headers) + " with exception: " + str(e))
+                        return FAILURE
                     # analyze all received headers for success, redirect or other
-                    for header in response_headers:
-                        key, value = header
-                        if key == b":status":
+                    for key, value in response_headers.items():
+                        if key == ":status":
                             try:
                                 status_code = int(value)
                             except Exception as e:
@@ -240,7 +285,7 @@ class Analyzer:
                                 return SUCCESS
                             elif status_code == 301 or status_code == 302:
                                 # redirect
-                                redirect = self.update_redirect(dict(response_headers))
+                                redirect = self.update_redirect(response_headers)
                                 if redirect != SUCCESS:
                                     return redirect
                                 return REDIRECT + "(" + self.hostname + self.path + ") -> " + self.analyze_http2_prior_knowledge(recursion - 1)
@@ -259,12 +304,6 @@ class Analyzer:
         else:
             self._debug("Received response but no status header from " + self.ip + ":" + str(self.port) + "(" + self.hostname + ")")
         return FAILURE
-
-
-    def analyze_http2_upgrade(self) -> str:
-        pass
-        # send http1 upgrade, check if 101 response, and if yes check if following http/2 is returned 200
-        # call recursively if redirect to other http site
 
     def update_redirect(self, headers: dict) -> str:
         """
@@ -311,6 +350,17 @@ class Analyzer:
                 b"\r\n"
         )
 
+    def create_http11_upgrade_request(self, settings_header_value: bytes) -> bytes:
+        return (
+                b"GET " + self.path.encode("ASCII") + b" HTTP/1.1\r\n" +
+                b"Host: " + self.hostname.encode("ASCII") + b"\r\n" +
+                b"User-Agent: " + USER_AGENT.encode("ASCII") + b"\r\n"
+                b"Connection: Upgrade, HTTP2-Settings\r\n" +
+                b"Upgrade: h2c\r\n" +
+                b"HTTP2-Settings: " + settings_header_value + b"\r\n" +
+                b"\r\n"
+        )
+
     def parse_http1_response(self, response: str):
         """
         Extracts the status code, headers, and HTTP version from an HTTP/1 response.
@@ -350,6 +400,9 @@ class Analyzer:
     def receive_ascii_response(self, sock: socket.socket) -> str:
         try:
             response = sock.recv(BUFFER_SIZE)
+        except socket.timeout as e:
+            self._debug("Could not receive response from " + self.ip + ":" + str(self.port) + "(" + self.hostname + ") with exception : " + str(e))
+            return TIMEOUT
         except Exception as e:
             self._debug("Could not receive response from " + self.ip + ":" + str(self.port) + "(" + self.hostname + ") with exception : " + str(e))
             return FAILURE
@@ -362,6 +415,18 @@ class Analyzer:
             self._debug("Could not decode response from " + self.ip + ":" + str(self.port) + "(" + self.hostname + ") with exception : " + str(e))
             return FAILURE
         return response
+
+    def receive_http1x_response(self, sock: socket.socket) -> (int, dict, str):
+        response = self.receive_ascii_response(sock)
+        if response == FAILURE or response == TIMEOUT:
+            return response
+        try:
+            status, headers, http_version = self.parse_http1_response(response)
+            self._debug("Extracted Status code: " + str(status) + ", Headers: " + str(headers) + ", HTTP version: " + http_version)
+        except Exception as e:
+            self._debug("Failed to parse HTTP/1 response: " + response + " with exception: " + str(e))
+            return FAILURE
+        return status, headers, http_version
 
     def resolve_hostname(self) -> str:
         ip = socket.gethostbyname(self.hostname)
