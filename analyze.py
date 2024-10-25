@@ -193,10 +193,15 @@ class Analyzer:
         # initialize http/2 connection
         h2_connection = h2.connection.H2Connection()
 
-        # for prior knowledge prepare HTTP/2 initialization packets
+        # for prior knowledge send HTTP/2 initialization packets
         if prior_knowledge:
             h2_connection.initiate_connection()
-
+            try:
+                sock.send(h2_connection.data_to_send())
+            except Exception as e:
+                self._debug("Could not initialize HTTP/2 connection to " + self.ip + ":" + str(
+                    self.port) + "(" + self.hostname + ") with exception : " + str(e))
+                return FAILURE
         # for upgrade mechanisms send HTTP/1.1 update packets
         else:
             settings_header_value = h2_connection.initiate_upgrade_connection()
@@ -207,7 +212,7 @@ class Analyzer:
                     self.port) + "(" + self.hostname + ") with exception : " + str(e))
                 return FAILURE
             # parse upgrade response
-            # TODO: save all data after \r\n\r\n and receive later
+            # TODO: save all data after \r\n\r\n and receive later, actually only interpret that for upgrade mechanism, main loop below only necessary for prior knowledge
             response = self.receive_http1x_response(sock)
             if response == FAILURE or response == TIMEOUT:
                 return response
@@ -216,14 +221,8 @@ class Analyzer:
             if status != 101:
                 self._debug("Received status code " + str(status) + " instead of 101 during HTTP/1.1 upgrade to HTTP/2.")
                 return FAILURE
-
-        # in both cases send HTTP/2 initialization data
-        try:
-            sock.send(h2_connection.data_to_send())
-        except Exception as e:
-            self._debug("Could not initialize HTTP/2 connection to " + self.ip + ":" + str(
-                self.port) + "(" + self.hostname + ") with exception : " + str(e))
-            return FAILURE
+            else:
+                # receive everything after \r\n\r\n from initial request
 
         ##### MAIN LOOP FROM HERE ON #####
 
