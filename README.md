@@ -1,2 +1,87 @@
 # Raw-HTTP-Support-Analyzer
 Analyzes a server for unencrypted HTTP support for version HTTP/0.9 to HTTP/2.
+
+Execute the script with a host as an argument. It tells you the unencrypted HTTP/2 versions supported by the server.
+
+## Requirements
+- Python 3
+- h2 (https://pypi.org/project/h2/)
+  - Install with `pip3 install h2` or `pip3 install -r requirements.txt`
+- docker (if you want to run the script inside a container)
+  - https://docs.docker.com/engine/install/
+
+## Usage
+```
+python3 analyze.py -h
+
+usage: analyze.py [options]
+
+Analyzes servers for unencrypted HTTP support.
+
+positional arguments:
+  hostname              The hostname of the server to analyze
+
+options:
+  -h, --help            show this help message and exit
+  --path PATH           The path to request from the server
+  --ip IP               The IP of the server to analyze
+  --port PORT           The port of the server to analyze
+  --debug, --no-debug   Whether to print debug output (default: False)
+  --redirect_depth REDIRECT_DEPTH
+                        The maximum depth of redirects to follow
+  --timeout TIMEOUT     The timeout for socket operations
+```
+
+## Example output
+
+`python3 analyze.py nsfwyoutube.com`
+
+```
+nsfwyoutube.com analysis started.
+Server online. Scanning!
+
+## Starting HTTP/0.9 analysis ##
+
+## Starting HTTP/1.0 analysis ##
+
+## Starting HTTP/1.1 analysis ##
+
+## Starting HTTP/2.0 prior knowledge analysis ##
+
+## Starting HTTP/2.0 upgrade analysis ##
+
+#####################
+
+HTTP/0.9: SUCCESS
+HTTP/1.0: SUCCESS
+HTTP/1.1: SUCCESS
+HTTP/2 (Prior Knowledge): SUCCESS
+HTTP/2 (Upgrade): FAILURE
+```
+
+## Return Types
+### SUCCESS
+The server supports the version of HTTP. For HTTP/0.9, the server responded with HTML.
+For HTML/1.0 and HTTP/1.1 the server responded with a 200 status code.
+For HTTP/2 with prior knowledge, the server responded with a 200 status code in an HTTP/2 response.
+For HTTP/2 with upgrade, the server responded with a 101 status code in an HTTP/1.1 response and then a 200 status code 
+in an HTTP/2 response.
+
+### FAILURE
+The server does not support the version of HTTP. Run with `--debug` to see detailed analysis and server responses.
+
+### TIMEOUT
+The server did not respond within the specified timeout. The timeout is specified with `--timeout` (default: 5s).
+
+### MAX REDIRECT
+The server redirected too many times. The maximum number of redirects is specified with `--redirect_depth` (default: 5).
+
+### REDIRECT
+The server redirected to another location. The location is specified alongside this feedback. Multiple redirects are
+chained in the output.
+
+### HTTPS REDIRECT
+The server redirected to an HTTPS location. The server does not support unencrypted HTTP.
+
+## Docker
+The script can be run inside a Docker container. The Dockerfile is included in the repository.
