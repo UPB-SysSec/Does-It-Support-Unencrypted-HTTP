@@ -1,7 +1,7 @@
-import socket
 import argparse
+import socket
 import traceback
-from typing import Tuple
+from typing import Tuple, Union
 
 import h2.connection
 
@@ -507,7 +507,7 @@ class Analyzer:
         self._debug("Successfully opened TCP socket to " + self.ip + ":" + str(self.port) + "(" + self.hostname + ")")
         return SUCCESS
 
-    def receive_bytes(self, sock: socket.socket) -> bytes | str:
+    def receive_bytes(self, sock: socket.socket) -> Union[bytes, str]:
         """
         Reads bytes from the socket.
         :param sock: The socket to read from.
@@ -562,7 +562,7 @@ class Analyzer:
             response = response.split(b"\r\n\r\n")[0] + b"\r\n\r\n"
         return self.decode_bytes(response)
 
-    def parse_http1_response(self, response: str) -> Tuple[int, dict, str] | str:
+    def parse_http1_response(self, response: str) -> Union[Tuple[int, dict, str], str]:
         """
         Parses an HTTP/1.x response. Extracts status code, headers, and HTTP version.
         :param response: The response to parse.
@@ -608,7 +608,7 @@ class Analyzer:
         else:
             return parsed_response
 
-    def receive_http2_upgrade_response(self, sock: socket.socket) -> Tuple[int, dict, bytes] | str:
+    def receive_http2_upgrade_response(self, sock: socket.socket) -> Union[Tuple[int, dict, bytes], str]:
         """
         Receives an HTTP/1.x response with status code 101 from the server. Parses the 101 response and returns its
         status code and headers and the subsequent HTTP/2 response.

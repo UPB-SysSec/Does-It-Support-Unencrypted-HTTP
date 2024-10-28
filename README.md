@@ -5,6 +5,8 @@ Execute the script with a host as an argument. It tells you the unencrypted HTTP
 
 ## Requirements
 - Python 3
+  - Supported versions: 3.9, 3.10, 3.11, 3.12, 3.13
+  - https://www.python.org/downloads/
 - h2 (https://pypi.org/project/h2/)
   - Install with `pip3 install h2` or `pip3 install -r requirements.txt`
 - docker (if you want to run the script inside a container)
@@ -85,3 +87,25 @@ The server redirected to an HTTPS location. The server does not support unencryp
 
 ## Docker
 The script can be run inside a Docker container. The Dockerfile is included in the repository.
+
+To run the script inside a container, build the image with
+```
+docker build -t raw-http-support-analyzer .
+```
+and run the script using 
+```
+docker run raw-http-support-analyzer <arguments>
+```
+for example
+```
+docker run raw-http-support-analyzer nsfwyoutube.com --debug --timeout 10
+```
+
+### HTTP/0.9 Support
+Currently, the tool checks unencrypted HTTP/0.9 support by detecting whether the server answered with HTML content. It
+is possible that the tool outputs a false positive if the server responds with HTML content that does not serve the 
+requested website. For instance, the server could host a default page that is served for all requests. For the detailed 
+server response, run the tool with the `--debug` flag.
+
+### Acknowledgements
+This tool is based on code written by Jonathan von Niessen (https://github.com/jonvn) for his master thesis.
