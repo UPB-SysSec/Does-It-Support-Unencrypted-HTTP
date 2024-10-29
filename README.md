@@ -14,8 +14,6 @@ Execute the script with a host as an argument. It tells you the unencrypted HTTP
 
 ## Usage
 ```
-python3 analyze.py -h
-
 usage: analyze.py [options]
 
 Analyzes servers for unencrypted HTTP support.
@@ -26,38 +24,30 @@ positional arguments:
 options:
   -h, --help            show this help message and exit
   --path PATH           The path to request from the server
-  --ip IP               The IP of the server to analyze
+  --ip IP               The IP of the server to analyze. If not provided, the hostname is resolved. If present, prevents domain resolution after redirects.
   --port PORT           The port of the server to analyze
+  --http09, --no-http09
+                        By default, HTT/0.9 is not analyzed. Provide --http09 to analyze the server for HTT/0.9 support. Return Type of HTT/0.9 probe is inconclusive, so run with debug or external analysis tool like Wireshark to verify the actual server answer. (default: False)
   --debug, --no-debug   Whether to print debug output (default: False)
   --redirect_depth REDIRECT_DEPTH
                         The maximum depth of redirects to follow
   --timeout TIMEOUT     The timeout for socket operations
+
 ```
 
 ## Example output
 
-`python3 analyze.py nsfwyoutube.com`
+`python3 analyze.py lgbtchinatour.com`
 
 ```
-nsfwyoutube.com analysis started.
+lgbtchinatour.com analysis started.
 Server online. Scanning!
-
-## Starting HTTP/0.9 analysis ##
-
-## Starting HTTP/1.0 analysis ##
-
-## Starting HTTP/1.1 analysis ##
-
-## Starting HTTP/2.0 prior knowledge analysis ##
-
-## Starting HTTP/2.0 upgrade analysis ##
 
 #####################
 
-HTTP/0.9: SUCCESS
-HTTP/1.0: SUCCESS
+HTTP/1.0: REDIRECT(www.lgbtchinatour.com/) -> SUCCESS
 HTTP/1.1: SUCCESS
-HTTP/2 (Prior Knowledge): SUCCESS
+HTTP/2 (Prior Knowledge): FAILURE
 HTTP/2 (Upgrade): FAILURE
 ```
 

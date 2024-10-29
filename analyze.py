@@ -27,8 +27,9 @@ def main():
 
     parser.add_argument('hostname', type=str, help='The hostname of the server to analyze')
     parser.add_argument('--path', type=str, default="/", help='The path to request from the server')
-    parser.add_argument('--ip', type=str, default=None, help='The IP of the server to analyze')
+    parser.add_argument('--ip', type=str, default=None, help='The IP of the server to analyze. If not provided, the hostname is resolved. If present, prevents domain resolution after redirects.')
     parser.add_argument('--port', type=int, default=80, help='The port of the server to analyze')
+    parser.add_argument('--http09', type=bool, default=False, action=argparse.BooleanOptionalAction, help="By default, HTT/0.9 is not analyzed. Provide --http09 to analyze the server for HTT/0.9 support. Return Type of HTT/0.9 probe is inconclusive, so run with debug or external analysis tool like Wireshark to verify the actual server answer.")
     parser.add_argument('--debug', type=bool, default=False, action=argparse.BooleanOptionalAction,
                         help='Whether to print debug output')
     parser.add_argument('--redirect_depth', type=int, default=2, help='The maximum depth of redirects to follow')
@@ -36,20 +37,21 @@ def main():
     args = parser.parse_args()
 
     # start analyzing
-    Analyzer(args.hostname, args.path, args.ip, args.port, args.debug, args.redirect_depth, args.timeout).analyze()
+    Analyzer(args.hostname, args.path, args.ip, args.port, args.http09, args.debug, args.redirect_depth, args.timeout).analyze()
 
 class Analyzer:
     """
     Analyzes a website for unencrypted HTTP support.
     """
 
-    def __init__(self, hostname: str, path: str, ip: str = None, port: int =  80, debug: bool = False, redirect_depth: int = 1, timeout: int = 5):
+    def __init__(self, hostname: str, path: str, ip: str = None, port: int =  80, http09:bool=False, debug: bool = False, redirect_depth: int = 1, timeout: int = 5):
         """
         Initializes Analyzer.
         :param hostname: The hostname of the server to analyze. Used in the Host header of HTTP requests. (required)
         :param path: The path to request from the server. (required)
         :param ip: The IP of the server to analyze. If not provided, the hostname is resolved. (optional)
         :param port: The port of the server to analyze. (default: 80)
+        :param http09: Whether to analyze HTTP/0.9 support. (default: False)
         :param debug: Enables debug statements if True. (default: False)
         :param redirect_depth: The maximum depth of HTTP redirects to follow. (default: 1)
         :param timeout: The timeout for socket operations in seconds. (default: 5)
@@ -58,9 +60,12 @@ class Analyzer:
         self.path = path
         self.ip = ip
         self.port = port
+        self.http09 = http09
         self.debug = debug
         self.redirect_depth = redirect_depth
         self.timeout = timeout
+
+        self._resolve_hostname = self.ip is None
 
     def analyze(self):
         """
@@ -69,7 +74,7 @@ class Analyzer:
         The following steps are performed:
         1. Resolve hostname if necessary
         2. Check TCP connectivity of server
-        3. Analyze HTTP/0.9 support
+        3. Analyze HTTP/0.9 support if requested
         4. Analyze HTTP/1.0 support
         5. Analyze HTTP/1.1 support
         6. Analyze HTTP/2.0 support with prior knowledge
@@ -78,9 +83,12 @@ class Analyzer:
         """
         print(self.hostname + " analysis started.")
         # resolve hostname if necessary
-        if self.ip is None:
+        if self._resolve_hostname:
             self._debug("No IP provided, attempting to resolve hostname")
-            self.resolve_hostname()
+            if self.resolve_hostname() == FAILURE:
+                print(
+                    "No IP provided and cannot resolve hostname for " + self.hostname + ". Provide reachable IP address or resolvable hostname.")
+                exit(255)
         else:
             print("Using given IP " + self.ip + " on " + self.hostname)
 
@@ -95,43 +103,46 @@ class Analyzer:
         elif reachable == SUCCESS:
             print("Server online. Scanning!")
 
+        ret_09 = FAILURE
+        if self.http09:
+            try:
+                self._debug("## Starting HTTP/0.9 analysis ##", 1)
+                ret_09 = self.analyze_http09()
+            except Exception as e:
+                self._debug("Error while analyzing HTTP/0.9: " + str(e))
+                traceback.print_exc()
+                ret_09 = FAILURE
         try:
-            print("\n## Starting HTTP/0.9 analysis ##")
-            ret_09 = self.analyze_http09()
-        except Exception as e:
-            self._debug("Error while analyzing HTTP/0.9: " + str(e))
-            traceback.print_exc()
-            ret_09 = FAILURE
-        try:
-            print("\n## Starting HTTP/1.0 analysis ##")
+            self._debug("## Starting HTTP/1.0 analysis ##", 1)
             ret_10 = self.analyze_http10(self.redirect_depth)
         except Exception as e:
             self._debug("Error while analyzing HTTP/1.0: " + str(e))
             traceback.print_exc()
             ret_10 = FAILURE
         try:
-            print("\n## Starting HTTP/1.1 analysis ##")
+            self._debug("## Starting HTTP/1.1 analysis ##", 1)
             ret_11 = self.analyze_http11(self.redirect_depth)
         except Exception as e:
             self._debug("Error while analyzing HTTP/1.1: " + str(e))
             traceback.print_exc()
             ret_11 = FAILURE
         try:
-            print("\n## Starting HTTP/2.0 prior knowledge analysis ##")
+            self._debug("## Starting HTTP/2.0 prior knowledge analysis ##", 1)
             ret_20_prior = self.analyze_http2_prior_knowledge(self.redirect_depth)
         except Exception as e:
             self._debug("Error while analyzing HTTP/2 prior knowledge: " + str(e))
             traceback.print_exc()
             ret_20_prior = FAILURE
         try:
-            print("\n## Starting HTTP/2.0 upgrade analysis ##")
+            self._debug("## Starting HTTP/2.0 upgrade analysis ##", 1)
             ret_20_upgrade = self.analyze_http2_upgrade(self.redirect_depth)
         except Exception as e:
             self._debug("Error while analyzing HTTP/2 upgrade: " + str(e))
             traceback.print_exc()
             ret_20_upgrade = FAILURE
         print("\n#####################\n")
-        print("HTTP/0.9: " + ret_09)
+        if self.http09:
+            print("HTTP/0.9: " + ret_09)
         print("HTTP/1.0: " + ret_10)
         print("HTTP/1.1: " + ret_11)
         print("HTTP/2 (Prior Knowledge): " + ret_20_prior)
@@ -444,6 +455,12 @@ class Analyzer:
             self._debug("Redirect to " + redirect_hostname + redirect_path)
             self.path = redirect_path
             self.hostname = redirect_hostname
+            # also update ip address
+            if self._resolve_hostname:
+                if self.resolve_hostname() == FAILURE:
+                    return FAILURE
+            else:
+                self._debug("Not resolving hostname after redirect because static IP was given.")
         return SUCCESS
 
     def create_http_09_request(self) -> bytes:
@@ -646,7 +663,7 @@ class Analyzer:
 
     def resolve_hostname(self):
         """
-        Resolves the hostname to an IP address. Exits the program if the hostname cannot be resolved. Set the object
+        Resolves the hostname to an IP address. Returns FAILURE if the hostname cannot be resolved. Set the object
         variable ip to the resolved IP address.
         """
         try:
@@ -654,9 +671,7 @@ class Analyzer:
             self._debug("Resolved hostname " + self.hostname + " to IP: " + self.ip)
         except Exception as e:
             self._debug("Failed to resolve hostname " + self.hostname + " with Exception: " + str(e))
-            print(
-                "No IP provided and cannot resolve hostname for " + self.hostname + ". Provide reachable IP address or resolvable hostname.")
-            exit(255)
+            return FAILURE
 
     def analyze_tcp_reachability(self) -> str:
         """
@@ -676,13 +691,13 @@ class Analyzer:
             self._debug("Could not open TCP socket to " + self.ip + ":" + str(self.port) + "(" + self.hostname + ") with exception : " + str(e))
             return FAILURE
 
-    def _debug(self, string: str):
+    def _debug(self, string: str, linebreaks: int=0):
         """
         Prints a debug message if debug is enabled.
         :param string: The debug message to print.
         """
         if self.debug:
-            print("DEBUG:" + string)
+            print(linebreaks * "\n" + "DEBUG:" + string)
 
 # start main method
 if __name__ == '__main__':
