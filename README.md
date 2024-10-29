@@ -23,16 +23,15 @@ positional arguments:
 
 options:
   -h, --help            show this help message and exit
-  --path PATH           The path to request from the server
-  --ip IP               The IP of the server to analyze. If not provided, the hostname is resolved. If present, prevents domain resolution after redirects.
-  --port PORT           The port of the server to analyze
+  --path PATH           The path to request from the server (default: /)
+  --ip IP               The IP of the server to analyze. If not provided, the hostname is resolved. If present, prevents domain resolution after redirects. (default: None)
+  --port PORT           The port of the server to analyze (default: 80)
   --http09, --no-http09
                         By default, HTT/0.9 is not analyzed. Provide --http09 to analyze the server for HTT/0.9 support. Return Type of HTT/0.9 probe is inconclusive, so run with debug or external analysis tool like Wireshark to verify the actual server answer. (default: False)
   --debug, --no-debug   Whether to print debug output (default: False)
   --redirect_depth REDIRECT_DEPTH
-                        The maximum depth of redirects to follow
-  --timeout TIMEOUT     The timeout for socket operations
-
+                        The maximum depth of redirects to follow (default: 2)
+  --timeout TIMEOUT     The timeout for socket operations (default: 5)
 ```
 
 ## Example output
