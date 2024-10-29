@@ -29,7 +29,7 @@ def main():
     parser.add_argument('--path', type=str, default="/", help='The path to request from the server')
     parser.add_argument('--ip', type=str, default=None, help='The IP of the server to analyze. If not provided, the hostname is resolved. If present, prevents domain resolution after redirects.')
     parser.add_argument('--port', type=int, default=80, help='The port of the server to analyze')
-    parser.add_argument('--http09', type=bool, default=False, action=argparse.BooleanOptionalAction, help="Whether to analyze HTTP/0.9 support. Return Type of HTT/0.9 probe is inconclusive, so run with debug or external analysis tool like Wireshark to verify the actual server answer.")
+    parser.add_argument('--http09', type=bool, default=False, action=argparse.BooleanOptionalAction, help="By default, HTT/0.9 is not analyzed. Provide --http09 to analyze the server for HTT/0.9 support. Return Type of HTT/0.9 probe is inconclusive, so run with debug or external analysis tool like Wireshark to verify the actual server answer.")
     parser.add_argument('--debug', type=bool, default=False, action=argparse.BooleanOptionalAction,
                         help='Whether to print debug output')
     parser.add_argument('--redirect_depth', type=int, default=2, help='The maximum depth of redirects to follow')
@@ -44,14 +44,14 @@ class Analyzer:
     Analyzes a website for unencrypted HTTP support.
     """
 
-    def __init__(self, hostname: str, path: str, ip: str = None, port: int =  80, htt09:bool=False, debug: bool = False, redirect_depth: int = 1, timeout: int = 5):
+    def __init__(self, hostname: str, path: str, ip: str = None, port: int =  80, http09:bool=False, debug: bool = False, redirect_depth: int = 1, timeout: int = 5):
         """
         Initializes Analyzer.
         :param hostname: The hostname of the server to analyze. Used in the Host header of HTTP requests. (required)
         :param path: The path to request from the server. (required)
         :param ip: The IP of the server to analyze. If not provided, the hostname is resolved. (optional)
         :param port: The port of the server to analyze. (default: 80)
-        :param htt09: Whether to analyze HTTP/0.9 support. (default: False)
+        :param http09: Whether to analyze HTTP/0.9 support. (default: False)
         :param debug: Enables debug statements if True. (default: False)
         :param redirect_depth: The maximum depth of HTTP redirects to follow. (default: 1)
         :param timeout: The timeout for socket operations in seconds. (default: 5)
@@ -60,7 +60,7 @@ class Analyzer:
         self.path = path
         self.ip = ip
         self.port = port
-        self.http09 = htt09
+        self.http09 = http09
         self.debug = debug
         self.redirect_depth = redirect_depth
         self.timeout = timeout

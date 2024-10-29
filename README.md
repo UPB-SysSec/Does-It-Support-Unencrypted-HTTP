@@ -27,11 +27,12 @@ options:
   --ip IP               The IP of the server to analyze. If not provided, the hostname is resolved. If present, prevents domain resolution after redirects.
   --port PORT           The port of the server to analyze
   --http09, --no-http09
-                        Whether to analyze HTTP/0.9 support. Return Type of HTT/0.9 probe is inconclusive, so run with debug or external analysis tool like Wireshark to verify the actual server answer. (default: False)
+                        By default, HTT/0.9 is not analyzed. Provide --http09 to analyze the server for HTT/0.9 support. Return Type of HTT/0.9 probe is inconclusive, so run with debug or external analysis tool like Wireshark to verify the actual server answer. (default: False)
   --debug, --no-debug   Whether to print debug output (default: False)
   --redirect_depth REDIRECT_DEPTH
                         The maximum depth of redirects to follow
   --timeout TIMEOUT     The timeout for socket operations
+
 ```
 
 ## Example output
