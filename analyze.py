@@ -26,15 +26,15 @@ def main():
                                      usage='%(prog)s [options]', add_help=True,
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('hostname', type=str, help='The hostname of the server to analyze')
-    parser.add_argument('--path', type=str, default="/", help='The path to request from the server')
+    parser.add_argument('hostname', type=str, help='The hostname of the server to analyze. (required)')
+    parser.add_argument('--path', type=str, default="/", help='The path to request from the server.')
     parser.add_argument('--ip', type=str, default=None, help='The IP of the server to analyze. If not provided, the hostname is resolved. If present, prevents domain resolution after redirects.')
-    parser.add_argument('--port', type=int, default=80, help='The port of the server to analyze')
+    parser.add_argument('--port', type=int, default=80, help='The port of the server to analyze.')
     parser.add_argument('--http09', type=bool, default=False, action=argparse.BooleanOptionalAction, help="By default, HTT/0.9 is not analyzed. Provide --http09 to analyze the server for HTT/0.9 support. Return Type of HTT/0.9 probe is inconclusive, so run with debug or external analysis tool like Wireshark to verify the actual server answer.")
     parser.add_argument('--debug', type=bool, default=False, action=argparse.BooleanOptionalAction,
-                        help='Whether to print debug output')
-    parser.add_argument('--redirect_depth', type=int, default=2, help='The maximum depth of redirects to follow')
-    parser.add_argument('--timeout', type=int, default=5, help='The timeout for socket operations')
+                        help='Whether to print debug output.')
+    parser.add_argument('--redirect_depth', type=int, default=2, help='The maximum depth of redirects to follow.')
+    parser.add_argument('--timeout', type=int, default=5, help='The timeout for socket operations.')
     args = parser.parse_args()
 
     # start analyzing
