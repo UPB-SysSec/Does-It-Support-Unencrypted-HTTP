@@ -66,7 +66,7 @@ class UnencryptedHTTPAnalyzer:
         self.redirect_depth = redirect_depth
         self.timeout = timeout
 
-        self._resolve_hostname = self.ip is None
+        self.resolve_hostname = self.ip is None
 
     def analyze(self):
         """
@@ -84,9 +84,9 @@ class UnencryptedHTTPAnalyzer:
         """
         print(self.hostname + " analysis started.")
         # resolve hostname if necessary
-        if self._resolve_hostname:
+        if self.resolve_hostname:
             self._debug("No IP provided, attempting to resolve hostname")
-            if self.resolve_hostname() == FAILURE:
+            if self._resolve_hostname() == FAILURE:
                 print(
                     "No IP provided and cannot resolve hostname for " + self.hostname + ". Provide reachable IP address or resolvable hostname.")
                 exit(255)
@@ -457,8 +457,8 @@ class UnencryptedHTTPAnalyzer:
             self.path = redirect_path
             self.hostname = redirect_hostname
             # also update ip address
-            if self._resolve_hostname:
-                if self.resolve_hostname() == FAILURE:
+            if self.resolve_hostname:
+                if self._resolve_hostname() == FAILURE:
                     return FAILURE
             else:
                 self._debug("Not resolving hostname after redirect because static IP was given.")
@@ -662,7 +662,7 @@ class UnencryptedHTTPAnalyzer:
 
         return status_code, headers, http2_response
 
-    def resolve_hostname(self):
+    def _resolve_hostname(self):
         """
         Resolves the hostname to an IP address. Returns FAILURE if the hostname cannot be resolved. Set the object
         variable ip to the resolved IP address.
