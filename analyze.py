@@ -23,7 +23,8 @@ def main():
 
     # prepare argument parser
     parser = argparse.ArgumentParser(description='Analyzes servers for unencrypted HTTP support.',
-                                     usage='%(prog)s [options]', add_help=True)
+                                     usage='%(prog)s [options]', add_help=True,
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument('hostname', type=str, help='The hostname of the server to analyze')
     parser.add_argument('--path', type=str, default="/", help='The path to request from the server')
