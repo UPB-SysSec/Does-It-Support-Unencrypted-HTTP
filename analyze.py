@@ -1,17 +1,22 @@
 import argparse
 import socket
 import traceback
+from enum import Enum
 from typing import Tuple, Union
 
 import h2.connection
 
-SUCCESS = "SUCCESS"
-FAILURE = "FAILURE"
-TIMEOUT = "TIMEOUT"
-MAX_REDIRECT = "MAX REDIRECT"
-REDIRECT = "REDIRECT"
-HTTPS_REDIRECT = "HTTPS REDIRECT"
-NOT_ANALYZED = "NOT ANALYZED"
+class ReturnType(Enum):
+    """
+    Return types for analysis functions.
+    """
+    SUCCESS = "SUCCESS"
+    FAILURE = "FAILURE"
+    TIMEOUT = "TIMEOUT"
+    MAX_REDIRECT = "MAX REDIRECT"
+    REDIRECT = "REDIRECT"
+    HTTPS_REDIRECT = "HTTPS REDIRECT"
+    NOT_ANALYZED = "NOT ANALYZED"
 
 BUFFER_SIZE = 4096
 
@@ -69,12 +74,12 @@ class UnencryptedHTTPAnalyzer:
 
         self.resolve_hostname = self.ip is None
 
-    def analyze(self) -> str:
+    def analyze(self) -> ReturnType:
         """
         Analyzes the server for unencrypted HTTP support.
 
-        :return: SUCCESS if the server is reachable and all analyses were successful, TIMEOUT if the server cannot be
-        reached due to a socket timeout, FAILURE otherwise.
+        :return: ReturnType.SUCCESS if the server is reachable and all analyses were successful, ReturnType.TIMEOUT if
+        the server cannot be reached due to a socket timeout, ReturnType.FAILURE otherwise.
 
         The following steps are performed:
         1. Resolve hostname if necessary
@@ -90,7 +95,7 @@ class UnencryptedHTTPAnalyzer:
         # resolve hostname if necessary
         if self.resolve_hostname:
             self._debug("No IP provided, attempting to resolve hostname")
-            if self._resolve_hostname() == FAILURE:
+            if self._resolve_hostname() == ReturnType.FAILURE:
                 print(
                     "No IP provided and cannot resolve hostname for " + self.hostname + ". Provide reachable IP address or resolvable hostname.")
                 exit(255)
@@ -99,16 +104,16 @@ class UnencryptedHTTPAnalyzer:
 
         # reachability check
         reachable = self.analyze_tcp_reachability()
-        if reachable == TIMEOUT:
-            print("Cannot open TCP connection to " + self.hostname + ":" + str(self.port) + " due to timeout (" + str(self.timeout) + "s). Is the server online?")
-            return TIMEOUT
-        elif reachable == FAILURE:
-            print("Cannot open TCP connection to " + self.hostname + str(self.port) + " due to non-timeout error. Is the server online?")
-            return FAILURE
-        elif reachable == SUCCESS:
+        if reachable == ReturnType.TIMEOUT:
+            print("Cannot open TCP connection to " + self.hostname + ":" + str(self.port) + " due to ReturnType.TIMEOUT (" + str(self.timeout) + "s). Is the server online?")
+            return ReturnType.TIMEOUT
+        elif reachable == ReturnType.FAILURE:
+            print("Cannot open TCP connection to " + self.hostname + str(self.port) + " due to non-ReturnType.TIMEOUT error. Is the server online?")
+            return ReturnType.FAILURE
+        elif reachable == ReturnType.SUCCESS:
             print("Server online. Scanning!")
 
-        ret_09 = NOT_ANALYZED
+        ret_09 = ReturnType.NOT_ANALYZED
         if self.http09:
             try:
                 self._debug("## Starting HTTP/0.9 analysis ##", 1)
@@ -116,35 +121,35 @@ class UnencryptedHTTPAnalyzer:
             except Exception as e:
                 self._debug("Error while analyzing HTTP/0.9: " + str(e))
                 traceback.print_exc()
-                ret_09 = FAILURE
+                ret_09 = ReturnType.FAILURE.value
         try:
             self._debug("## Starting HTTP/1.0 analysis ##", 1)
             ret_10 = self.analyze_http10(self.redirect_depth)
         except Exception as e:
             self._debug("Error while analyzing HTTP/1.0: " + str(e))
             traceback.print_exc()
-            ret_10 = FAILURE
+            ret_10 = ReturnType.FAILURE.value
         try:
             self._debug("## Starting HTTP/1.1 analysis ##", 1)
             ret_11 = self.analyze_http11(self.redirect_depth)
         except Exception as e:
             self._debug("Error while analyzing HTTP/1.1: " + str(e))
             traceback.print_exc()
-            ret_11 = FAILURE
+            ret_11 = ReturnType.FAILURE.value
         try:
             self._debug("## Starting HTTP/2.0 prior knowledge analysis ##", 1)
             ret_20_prior = self.analyze_http2_prior_knowledge(self.redirect_depth)
         except Exception as e:
             self._debug("Error while analyzing HTTP/2 prior knowledge: " + str(e))
             traceback.print_exc()
-            ret_20_prior = FAILURE
+            ret_20_prior = ReturnType.FAILURE.value
         try:
             self._debug("## Starting HTTP/2.0 upgrade analysis ##", 1)
             ret_20_upgrade = self.analyze_http2_upgrade(self.redirect_depth)
         except Exception as e:
             self._debug("Error while analyzing HTTP/2 upgrade: " + str(e))
             traceback.print_exc()
-            ret_20_upgrade = FAILURE
+            ret_20_upgrade = ReturnType.FAILURE.value
         print("\n#####################\n")
         if self.http09:
             print("HTTP/0.9: " + ret_09)
@@ -162,36 +167,36 @@ class UnencryptedHTTPAnalyzer:
         """
         # open and connect socket
         sock = self.open_socket()
-        if self.connect_socket(sock) != SUCCESS:
-            return FAILURE
+        if self.connect_socket(sock) != ReturnType.SUCCESS:
+            return ReturnType.FAILURE.value
         # send 09 request to server
         try:
             sock.send(self.create_http_09_request())
         except Exception as e:
             self._debug("Could not send HTTP/0.9 request to " + self.ip + ":" + str(self.port) + "(" + self.hostname + ") with exception : " + str(e))
-            return FAILURE
+            return ReturnType.FAILURE.value
         # receive response
         response = self.receive_ascii_response(sock)
-        if response == FAILURE or response == TIMEOUT:
-            return response
+        if isinstance(response, ReturnType):
+            return response.value
         try:
             if response.lower().startswith("<html>") or response.lower().startswith("<!doctype html"):
                 self._debug("HTTP/0.9 response from " + self.ip + ":" + str(self.port) + "(" + self.hostname + ")")
-                return SUCCESS
+                return ReturnType.SUCCESS.value
             else:
                 # TODO: find better way to check for HTTP/0.9 response, maybe check for 1.0 response too?
                 self._debug("Could not interpret response from " + self.ip + ":" + str(self.port) + "(" + self.hostname + ") as HTTP/0.9 response.")
-                return FAILURE
+                return ReturnType.FAILURE.value
         except Exception as e:
             self._debug("Could not interpret response from " + self.ip + ":" + str(self.port) + "(" + self.hostname + ") with exception : " + str(e))
-            return FAILURE
+            return ReturnType.FAILURE.value
 
 
     def analyze_http10(self, recursion: int) -> str:
         """
         Analyzes the server for HTTP/1.0 support.
         :param recursion: The maximum depth of redirects to follow.
-        :return: SUCCESS if HTTP/1.0 is supported, FAILURE otherwise.
+        :return: A string that describes the result of the analysis including redirects and failures.
 
         HTTP/1.0 is supported if the server responds with a 200 status code.
         """
@@ -201,7 +206,7 @@ class UnencryptedHTTPAnalyzer:
         """
         Analyzes the server for HTTP/1.1 support.
         :param recursion: The maximum depth of redirects to follow.
-        :return: SUCCESS if HTTP/1.1 is supported, FAILURE otherwise.
+        :return: A string that describes the result of the analysis including redirects and failures.
 
         HTTP/1.1 is supported if the server responds with a 200 status code.
         """
@@ -212,47 +217,47 @@ class UnencryptedHTTPAnalyzer:
         Analyzes the server for HTTP/1.x support.
         :param version: The HTTP version to analyze. Provide the complete string, e.g. "HTTP/1.0".
         :param recursion: The maximum depth of redirects to follow.
-        :return: SUCCESS if HTTP/1.x is supported, FAILURE otherwise.
+        :return: A string that describes the result of the analysis including redirects and failures.
 
         HTTP/1.x is supported if the server responds with a 200 status code.
         """
         if recursion == -1:
-            return MAX_REDIRECT
+            return ReturnType.MAX_REDIRECT.value
         # open and connect socket
         sock = self.open_socket()
-        if self.connect_socket(sock) != SUCCESS:
-            return FAILURE
+        if self.connect_socket(sock) != ReturnType.SUCCESS:
+            return ReturnType.FAILURE.value
         # send 1x request to server
         try:
             sock.send(self.create_http1x_request(version))
         except Exception as e:
             self._debug("Could not send " + version + " request to " + self.ip + ":" + str(self.port) + "(" + self.hostname + ") with exception : " + str(e))
-            return FAILURE
+            return ReturnType.FAILURE.value
         # receive response
         response = self.receive_http1x_response(sock)
-        if response == FAILURE or response == TIMEOUT:
-            return response
+        if isinstance(response, ReturnType):
+            return response.value
         else:
             status, headers, http_version = response
         if status == 200:
             self._debug("Received " + version + " response from " + self.ip + ":" + str(self.port) + "(" + self.hostname + ")")
-            return SUCCESS
+            return ReturnType.SUCCESS.value
         elif status == 301 or status == 302:
             # redirect
             # turn list of lists into dict
             redirect = self.update_redirect(dict(headers))
-            if redirect != SUCCESS:
-                return redirect
-            return REDIRECT + "(" + self.hostname + self.path + ") -> " + self.analyze_http1x(version, recursion - 1)
+            if redirect != ReturnType.SUCCESS:
+                return redirect.value
+            return ReturnType.REDIRECT.value + "(" + self.hostname + self.path + ") -> " + self.analyze_http1x(version, recursion - 1)
         else:
-            self._debug("Received status code " + str(status) + " leading to failure.")
-            return FAILURE
+            self._debug("Received status code " + str(status) + " leading to ReturnType.FAILURE.")
+            return ReturnType.FAILURE.value
 
     def analyze_http2_prior_knowledge(self, recursion: int) -> str:
         """
         Analyzes the server for HTTP/2 support with prior knowledge.
         :param recursion: The maximum depth of redirects to follow.
-        :return: SUCCESS if HTTP/2 is supported, FAILURE otherwise.
+        :return: A string that describes the result of the analysis including redirects and failures.
 
         HTTP/2 with prior knowledge is supported if the server immediately responds with a 200 status code in an HTTP/2
         message.
@@ -264,7 +269,7 @@ class UnencryptedHTTPAnalyzer:
         """
         Analyzes the server for HTTP/2 support with upgrade mechanism.
         :param recursion: The maximum depth of redirects to follow.
-        :return: SUCCESS if HTTP/2 is supported, FAILURE otherwise.
+        :return: A string that describes the result of the analysis including redirects and failures.
 
         HTTP/2 with upgrade mechanism is supported if the server responds with a 101 status code in an HTTP/1.1 message
         and a 200 status code in an HTTP/2 message.
@@ -277,18 +282,18 @@ class UnencryptedHTTPAnalyzer:
         :param recursion: The maximum depth of redirects to follow.
         :param prior_knowledge: Whether to use prior knowledge or the upgrade mechanism. True for prior knowledge,
         False for upgrade.
-        :return: SUCCESS if HTTP/2 is supported, FAILURE otherwise
+        :return: A string that describes the result of the analysis including redirects and failures.
 
         This function provides the core HTTP/2 functionality. It performs the upgrade mechanism or prior knowledge and
         interprets all HTTP/2 responses in a shared loop.
         """
         if recursion == -1:
-            return MAX_REDIRECT
+            return ReturnType.MAX_REDIRECT.value
 
         # open and connect socket
         sock = self.open_socket()
-        if self.connect_socket(sock) != SUCCESS:
-            return FAILURE
+        if self.connect_socket(sock) != ReturnType.SUCCESS:
+            return ReturnType.FAILURE.value
         # initialize http/2 connection
         h2_connection = h2.connection.H2Connection()
 
@@ -301,7 +306,7 @@ class UnencryptedHTTPAnalyzer:
             except Exception as e:
                 self._debug("Could not initialize HTTP/2 connection to " + self.ip + ":" + str(
                     self.port) + "(" + self.hostname + ") with exception : " + str(e))
-                return FAILURE
+                return ReturnType.FAILURE.value
             # send http/2 request to server
             headers = [
                 (':method', 'GET'),
@@ -316,7 +321,7 @@ class UnencryptedHTTPAnalyzer:
             except Exception as e:
                 self._debug("Could not send HTTP/2 GET to " + self.ip + ":" + str(
                     self.port) + "(" + self.hostname + ") with exception : " + str(e))
-                return FAILURE
+                return ReturnType.FAILURE.value
             data = None
 
         # for upgrade mechanisms send only HTTP/1.1 request with upgrade header
@@ -327,33 +332,33 @@ class UnencryptedHTTPAnalyzer:
             except Exception as e:
                 self._debug("Could not send HTTP/1.1 upgrade request to " + self.ip + ":" + str(
                     self.port) + "(" + self.hostname + ") with exception : " + str(e))
-                return FAILURE
+                return ReturnType.FAILURE.value
             # parse upgrade response
             response = self.receive_http2_upgrade_response(sock)
-            if response == FAILURE or response == TIMEOUT:
-                return response
+            if isinstance(response, ReturnType):
+                return response.value
             status_code, headers, http2_response = response
 
             # check for redirect
             if status_code == 301 or status_code == 302:
                 # redirect
                 redirect = self.update_redirect(headers)
-                if redirect != SUCCESS:
-                    return redirect
-                return REDIRECT + "(" + self.hostname + self.path + ") -> " + self.analyze_http2_upgrade(recursion - 1)
+                if redirect != ReturnType.SUCCESS:
+                    return redirect.value
+                return ReturnType.REDIRECT.value + "(" + self.hostname + self.path + ") -> " + self.analyze_http2_upgrade(recursion - 1)
 
             # check for 101 status code
             if status_code != 101:
                 self._debug("Received status code " + str(status_code) + " instead of 101 during HTTP/1.1 upgrade to HTTP/2.")
-                return FAILURE
+                return ReturnType.FAILURE.value
 
             # check for upgrade header presence
             if "upgrade" not in headers:
                 self._debug("No upgrade header in response to HTTP/1.1 upgrade to HTTP/2.")
-                return FAILURE
+                return ReturnType.FAILURE.value
             if headers["upgrade"].lower() not in ["h2c", "http/2"]:
                 self._debug("Received upgrade header " + headers["upgrade"] + " instead of HTTP/2 during HTTP/1.1 upgrade to HTTP/2.")
-                return FAILURE
+                return ReturnType.FAILURE.value
             data = http2_response
 
         ##### MAIN LOOP FROM HERE ON #####
@@ -388,26 +393,26 @@ class UnencryptedHTTPAnalyzer:
                         response_headers = dict([(key.decode("ASCII"), value.decode("ASCII")) for key, value in event.headers])
                     except Exception as e:
                         self._debug("Could not decode response headers from HTTP/2 response: " + str(event.headers) + " with exception: " + str(e))
-                        return FAILURE
-                    # analyze all received headers for success, redirect or other
+                        return ReturnType.FAILURE.value
+                    # analyze all received headers for ReturnType.SUCCESS, redirect or other
                     for key, value in response_headers.items():
                         if key == ":status":
                             try:
                                 status_code = int(value)
                             except Exception as e:
                                 self._debug("Could not extract status code from HTTP/2 response headers: " + str(response_headers) + " with exception: " + str(e))
-                                return FAILURE
+                                return ReturnType.FAILURE.value
                             if status_code == 200:
-                                return SUCCESS
+                                return ReturnType.SUCCESS.value
                             elif status_code == 301 or status_code == 302:
                                 # redirect
                                 redirect = self.update_redirect(response_headers)
-                                if redirect != SUCCESS:
-                                    return redirect
-                                return REDIRECT + "(" + self.hostname + self.path + ") -> " + self.analyze_http2_prior_knowledge(recursion - 1)
+                                if redirect != ReturnType.SUCCESS:
+                                    return redirect.value
+                                return ReturnType.REDIRECT.value + "(" + self.hostname + self.path + ") -> " + self.analyze_http2_prior_knowledge(recursion - 1)
                             else:
-                                self._debug("Received status code " + str(status_code) + " leading to failure.")
-                                return FAILURE
+                                self._debug("Received status code " + str(status_code) + " leading to ReturnType.FAILURE.")
+                                return ReturnType.FAILURE.value
                     response_received = True
                     self._debug("Received HTTP/2 response from " + self.ip + ":" + str(self.port) + "(" + self.hostname + ")")
                 elif isinstance(event, h2.events.StreamEnded):
@@ -419,29 +424,30 @@ class UnencryptedHTTPAnalyzer:
             data = None
         if not response_received:
             self._debug("No response received from " + self.ip + ":" + str(self.port) + "(" + self.hostname + ")")
-            return FAILURE
+            return ReturnType.FAILURE.value
         else:
             self._debug("Received response but no status header from " + self.ip + ":" + str(self.port) + "(" + self.hostname + ")")
-            return FAILURE
+            return ReturnType.FAILURE.value
 
-    def update_redirect(self, headers: dict) -> str:
+    def update_redirect(self, headers: dict) -> ReturnType:
         """
         Updates the hostname and path based on a redirect response's headers.
         :param headers: The headers of the redirect response.
-        :return: SUCCESS if the redirect was successful, MAX_REDICRECT for a circular redirect, FAILURE otherwise.
+        :return: ReturnType.SUCCESS if the redirect was successful, ReturnType.MAX_REDIRECT for a circular
+        redirect, ReturnType.FAILURE otherwise.
 
         The hostname and path are updated based on the Location header of the redirect response. Updates the object
         variables.
         """
         if "location" not in headers:
             self._debug("No location header in redirect response.")
-            return FAILURE
+            return ReturnType.FAILURE
 
         # dont follow https redirects
         redirect_hostname = headers["location"]
         if redirect_hostname.startswith("https://"):
             self._debug("Redirect to HTTPS site " + redirect_hostname + ", not following")
-            return HTTPS_REDIRECT
+            return ReturnType.HTTPS_REDIRECT
         # extract new hostname and path
         if "://" in redirect_hostname:
             # cut optional http://
@@ -454,7 +460,7 @@ class UnencryptedHTTPAnalyzer:
         # detect stagnant redirects
         if redirect_path == self.path and redirect_hostname == self.hostname:
             self._debug("Redirect to same hostname detected")
-            return MAX_REDIRECT
+            return ReturnType.MAX_REDIRECT
         else:
             # update path and hostname
             self._debug("Redirect to " + redirect_hostname + redirect_path)
@@ -462,11 +468,11 @@ class UnencryptedHTTPAnalyzer:
             self.hostname = redirect_hostname
             # also update ip address
             if self.resolve_hostname:
-                if self._resolve_hostname() == FAILURE:
-                    return FAILURE
+                if self._resolve_hostname() == ReturnType.FAILURE:
+                    return ReturnType.FAILURE
             else:
                 self._debug("Not resolving hostname after redirect because static IP was given.")
-        return SUCCESS
+        return ReturnType.SUCCESS
 
     def create_http_09_request(self) -> bytes:
         """
@@ -515,76 +521,79 @@ class UnencryptedHTTPAnalyzer:
         sock.settimeout(self.timeout)
         return sock
 
-    def connect_socket(self, sock: socket.socket) -> str:
+    def connect_socket(self, sock: socket.socket) -> ReturnType:
         """
         Connects a previously opened socket to the server.
         :param sock: The socket to connect.
-        :return: SUCCESS if the connection was successful, FAILURE otherwise.
+        :return: ReturnType.SUCCESS if the connection was successful, ReturnType.FAILURE otherwise.
         """
         try:
             sock.connect((self.ip, self.port))
         except Exception as e:
             self._debug("Could not open TCP socket to " + self.ip + ":" + str(self.port) + "(" + self.hostname + ") with exception : " + str(e))
-            return FAILURE
+            return ReturnType.FAILURE
         self._debug("Successfully opened TCP socket to " + self.ip + ":" + str(self.port) + "(" + self.hostname + ")")
-        return SUCCESS
+        return ReturnType.SUCCESS
 
-    def receive_bytes(self, sock: socket.socket) -> Union[bytes, str]:
+    def receive_bytes(self, sock: socket.socket) -> Union[bytes, ReturnType]:
         """
         Reads bytes from the socket.
         :param sock: The socket to read from.
         :return: The received bytes.
 
-        If the response is empty, TIMEOUT is returned. If the response cannot be read, FAILURE is returned.
+        If the response is empty, ReturnType.TIMEOUT is returned. If the response cannot be read, ReturnType.FAILURE
+        is returned.
         """
         try:
             response = sock.recv(BUFFER_SIZE)
         except socket.timeout as e:
             self._debug("Could not receive response from " + self.ip + ":" + str(self.port) + "(" + self.hostname + ") with exception : " + str(e))
-            return TIMEOUT
+            return ReturnType.TIMEOUT
         except Exception as e:
             self._debug("Could not receive response from " + self.ip + ":" + str(self.port) + "(" + self.hostname + ") with exception : " + str(e))
-            return FAILURE
+            return ReturnType.FAILURE
         self._debug("Received response from " + self.ip + ":" + str(self.port) + "(" + self.hostname + "): " + response.hex())
         return response
 
-    def decode_bytes(self, response: bytes) -> str:
+    def decode_bytes(self, response: bytes) -> Union[str, ReturnType]:
         """
-        Decodes bytes to an ASCII string. Returns the decoded string or FAILURE if the bytes cannot be decoded.
+        Decodes bytes to an ASCII string. Returns the decoded string or ReturnType.FAILURE if the bytes cannot be
+        decoded.
         :param response: The bytes to decode.
         :return: The decoded response as a string.
 
-        If the response cannot be decoded, FAILURE is returned.
+        If the response cannot be decoded, ReturnType.FAILURE is returned.
         """
         try:
             response = response.decode("ASCII")
             self._debug("Decoded response from " + self.ip + ":" + str(self.port) + "(" + self.hostname + "): " + response)
         except Exception as e:
             self._debug("Could not decode response from " + self.ip + ":" + str(self.port) + "(" + self.hostname + ") with exception : " + str(e))
-            return FAILURE
+            return ReturnType.FAILURE
         return response
 
-    def receive_ascii_response(self, sock: socket.socket, header_only: bool=False) -> str:
+    def receive_ascii_response(self, sock: socket.socket, header_only: bool=False) -> Union[str, ReturnType]:
         """
         Reads bytes from the socket and returns them as an ASCII string.
         :param sock: The socket to read from.
         :param header_only: Whether to only read the header of the response. (default: False)
         :return: The ASCII response as a string.
 
-        If the response is empty, TIMEOUT is returned. If the response cannot be read, FAILURE is returned.
+        If the response is empty, ReturnType.TIMEOUT is returned. If the response cannot be read, ReturnType.FAILURE
+        is returned.
         """
         response = self.receive_bytes(sock)
-        if response == FAILURE or response == TIMEOUT:
+        if isinstance(response, ReturnType):
             return response
         if header_only:
             # discard everything except the header
             if not b"\r\n\r\n" in response:
                 self._debug("No \\r\\n\\r\\n separator between HTTP/1.x response header and body or request end.")
-                return FAILURE
+                return ReturnType.FAILURE
             response = response.split(b"\r\n\r\n")[0] + b"\r\n\r\n"
         return self.decode_bytes(response)
 
-    def parse_http1_response(self, response: str) -> Union[Tuple[int, dict, str], str]:
+    def parse_http1_response(self, response: str) -> Union[Tuple[int, dict, str], ReturnType]:
         """
         Parses an HTTP/1.x response. Extracts status code, headers, and HTTP version.
         :param response: The response to parse.
@@ -607,46 +616,42 @@ class UnencryptedHTTPAnalyzer:
             self._debug("Extracted Status code: " + str(status) + ", Headers: " + str(headers) + ", HTTP version: " + http_version)
         except Exception as e:
             self._debug("Failed to parse HTTP/1 response: " + response + " with exception: " + str(e))
-            return FAILURE
+            return ReturnType.FAILURE
         return status, headers, http_version
 
-    def receive_http1x_response(self, sock: socket.socket) -> (int, dict, str):
+    def receive_http1x_response(self, sock: socket.socket) -> Union[Tuple[int, dict, str], ReturnType]:
         """
         Receives an HTTP/1.x response from the server. Parses the response and returns the status code, headers, and
         HTTP version.
         :param sock: The socket to receive the response from.
         :return: The status code, headers, and HTTP version as a tuple.
 
-        If the response is empty, TIMEOUT is returned. If the response cannot be parsed, FAILURE is returned. Merges
+        If the response is empty, ReturnType.TIMEOUT is returned. If the response cannot be parsed, ReturnType.FAILURE is returned. Merges
         the functionality of receive_ascii_response and parse_http1_response.
         """
         response = self.receive_ascii_response(sock, header_only=True)
-        if response == FAILURE or response == TIMEOUT:
+        if isinstance(response, ReturnType):
             return response
         # extract status code, headers and http version
-        parsed_response = self.parse_http1_response(response)
-        if parsed_response == FAILURE:
-            return FAILURE
-        else:
-            return parsed_response
+        return self.parse_http1_response(response)
 
-    def receive_http2_upgrade_response(self, sock: socket.socket) -> Union[Tuple[int, dict, bytes], str]:
+    def receive_http2_upgrade_response(self, sock: socket.socket) -> Union[Tuple[int, dict, bytes], ReturnType]:
         """
         Receives an HTTP/1.x response with status code 101 from the server. Parses the 101 response and returns its
         status code and headers and the subsequent HTTP/2 response.
         :param sock: The socket to receive the response from.
         :return: The HTTP/2 response as bytes.
 
-        If the response is empty, TIMEOUT is returned. If the response cannot be parsed, FAILURE is returned.
+        If the response is empty, ReturnType.TIMEOUT is returned. If the response cannot be parsed, ReturnType.FAILURE is returned.
         """
         response = self.receive_bytes(sock)
-        if response == FAILURE or response == TIMEOUT:
+        if isinstance(response, ReturnType):
             return response
 
         # require \r\n\r\n to separate HTTP/1.1 and HTTP/2 response
         if b"\r\n\r\n" not in response:
             self._debug("No separator between HTTP/1.1 and HTTP/2 response.")
-            return FAILURE
+            return ReturnType.FAILURE
 
         # extract HTTP/1.1 and HTTP/2 response
         http1_response, http2_response = response.split(b"\r\n\r\n", 1)
@@ -656,45 +661,46 @@ class UnencryptedHTTPAnalyzer:
 
         # parse HTTP/1 response as ASCII
         http1_response = self.decode_bytes(http1_response)
-        if http1_response == FAILURE:
-            return FAILURE
+        if isinstance(http1_response, ReturnType):
+            return http1_response
         # extract status code, headers and http version
         http1_response = self.parse_http1_response(http1_response)
-        if http1_response == FAILURE:
-            return FAILURE
+        if isinstance(http1_response, ReturnType):
+            return http1_response
         status_code, headers, _ = http1_response
 
         return status_code, headers, http2_response
 
-    def _resolve_hostname(self) -> str:
+    def _resolve_hostname(self) -> ReturnType:
         """
-        Resolves the hostname to an IP address. Returns FAILURE if the hostname cannot be resolved. Set the object
-        variable ip to the resolved IP address.
+        Resolves the hostname to an IP address. Returns ReturnType.FAILURE if the hostname cannot be resolved. Sets the
+        object variable ip to the resolved IP address.
         """
         try:
             self.ip = socket.gethostbyname(self.hostname)
             self._debug("Resolved hostname " + self.hostname + " to IP: " + self.ip)
         except Exception as e:
             self._debug("Failed to resolve hostname " + self.hostname + " with Exception: " + str(e))
-            return FAILURE
+            return ReturnType.FAILURE
 
-    def analyze_tcp_reachability(self) -> str:
+    def analyze_tcp_reachability(self) -> ReturnType:
         """
-        Analyzes the server for TCP reachability. Opens a TCP socket to the server. Returns SUCCESS if the server is
-        reachable, FAILURE otherwise. Returns TIMEOUT if the server is not reachable due to a timeout.
+        Analyzes the server for TCP reachability. Opens a TCP socket to the server. Returns ReturnType.SUCCESS if the
+        server is reachable, ReturnType.FAILURE otherwise. Returns ReturnType.TIMEOUT if the server is not reachable due
+        to a timeout.
         """
         # open tcp socket to ip
         sock = self.open_socket()
         try:
             sock.connect((self.ip, self.port))
             self._debug("Successfully opened TCP socket to " + self.ip + ":" + str(self.port) + "(" + self.hostname + ")")
-            return SUCCESS
+            return ReturnType.SUCCESS
         except socket.timeout as e:
             self._debug("Could not open TCP socket to " + self.ip + ":" + str(self.port) + "(" + self.hostname + ") with exception : " + str(e))
-            return TIMEOUT
+            return ReturnType.TIMEOUT
         except Exception as e:
             self._debug("Could not open TCP socket to " + self.ip + ":" + str(self.port) + "(" + self.hostname + ") with exception : " + str(e))
-            return FAILURE
+            return ReturnType.FAILURE
 
     def _debug(self, string: str, linebreaks: int=0):
         """
