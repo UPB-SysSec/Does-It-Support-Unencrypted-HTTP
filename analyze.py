@@ -38,9 +38,9 @@ def main():
     args = parser.parse_args()
 
     # start analyzing
-    Analyzer(args.hostname, args.path, args.ip, args.port, args.http09, args.debug, args.redirect_depth, args.timeout).analyze()
+    UnencryptedHTTPAnalyzer(args.hostname, args.path, args.ip, args.port, args.http09, args.debug, args.redirect_depth, args.timeout).analyze()
 
-class Analyzer:
+class UnencryptedHTTPAnalyzer:
     """
     Analyzes a website for unencrypted HTTP support.
     """
