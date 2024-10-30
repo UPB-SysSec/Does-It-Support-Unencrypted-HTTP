@@ -11,6 +11,7 @@ TIMEOUT = "TIMEOUT"
 MAX_REDIRECT = "MAX REDIRECT"
 REDIRECT = "REDIRECT"
 HTTPS_REDIRECT = "HTTPS REDIRECT"
+NOT_ANALYZED = "NOT ANALYZED"
 
 BUFFER_SIZE = 4096
 
@@ -68,9 +69,12 @@ class UnencryptedHTTPAnalyzer:
 
         self.resolve_hostname = self.ip is None
 
-    def analyze(self):
+    def analyze(self) -> str:
         """
         Analyzes the server for unencrypted HTTP support.
+
+        :return: SUCCESS if the server is reachable and all analyses were successful, TIMEOUT if the server cannot be
+        reached due to a socket timeout, FAILURE otherwise.
 
         The following steps are performed:
         1. Resolve hostname if necessary
@@ -104,7 +108,7 @@ class UnencryptedHTTPAnalyzer:
         elif reachable == SUCCESS:
             print("Server online. Scanning!")
 
-        ret_09 = FAILURE
+        ret_09 = NOT_ANALYZED
         if self.http09:
             try:
                 self._debug("## Starting HTTP/0.9 analysis ##", 1)
@@ -203,7 +207,7 @@ class UnencryptedHTTPAnalyzer:
         """
         return self.analyze_http1x("HTTP/1.1", recursion)
 
-    def analyze_http1x(self, version: str, recursion: int):
+    def analyze_http1x(self, version: str, recursion: int) -> str:
         """
         Analyzes the server for HTTP/1.x support.
         :param version: The HTTP version to analyze. Provide the complete string, e.g. "HTTP/1.0".
@@ -424,7 +428,7 @@ class UnencryptedHTTPAnalyzer:
         """
         Updates the hostname and path based on a redirect response's headers.
         :param headers: The headers of the redirect response.
-        :return: SUCCESS if the redirect was successful, FAILURE otherwise.
+        :return: SUCCESS if the redirect was successful, MAX_REDICRECT for a circular redirect, FAILURE otherwise.
 
         The hostname and path are updated based on the Location header of the redirect response. Updates the object
         variables.
@@ -450,7 +454,7 @@ class UnencryptedHTTPAnalyzer:
         # detect stagnant redirects
         if redirect_path == self.path and redirect_hostname == self.hostname:
             self._debug("Redirect to same hostname detected")
-            return FAILURE
+            return MAX_REDIRECT
         else:
             # update path and hostname
             self._debug("Redirect to " + redirect_hostname + redirect_path)
@@ -662,7 +666,7 @@ class UnencryptedHTTPAnalyzer:
 
         return status_code, headers, http2_response
 
-    def _resolve_hostname(self):
+    def _resolve_hostname(self) -> str:
         """
         Resolves the hostname to an IP address. Returns FAILURE if the hostname cannot be resolved. Set the object
         variable ip to the resolved IP address.

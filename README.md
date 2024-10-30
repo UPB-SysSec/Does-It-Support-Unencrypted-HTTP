@@ -1,7 +1,12 @@
 # Raw-HTTP-Support-Analyzer
 Analyzes a server for unencrypted HTTP support for version HTTP/0.9 to HTTP/2.
 
-Execute the script with a host as an argument. It tells you the unencrypted HTTP/2 versions supported by the server.
+Execute the script with a host as an argument. It tells you the unencrypted HTTP versions supported by the server. Supported versions:
+- HTTP/0.9: experimental
+- HTTP/1.0
+- HTTP/1.1
+- HTTP/2 (Prior Knowledge)
+- HTTP/2 (Upgrade)
 
 ## Requirements
 - Python 3
