@@ -1,4 +1,4 @@
-# Raw-HTTP-Support-Analyzer
+# Does-It-Support-Unencrypted-HTTP
 Analyzes a server for unencrypted HTTP support for version HTTP/0.9 to HTTP/2.
 
 Execute the script with a host as an argument. It tells you the unencrypted HTTP versions supported by the server. Supported versions:
