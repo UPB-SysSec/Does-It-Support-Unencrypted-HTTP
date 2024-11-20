@@ -8,6 +8,9 @@ Execute the script with a host as an argument. It tells you the unencrypted HTTP
 - HTTP/2 (Prior Knowledge)
 - HTTP/2 (Upgrade)
 
+## Warning
+Do not convey confidential traffic over any version of unencrypted HTTP. Unencrypted HTTP does not provide any protection against eavesdropping.
+
 ## Requirements
 - Python 3
   - Supported versions: 3.9, 3.10, 3.11, 3.12, 3.13
